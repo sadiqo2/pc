@@ -1,4 +1,4 @@
-package_json = '''{
+{
   "name": "telegram-userbot-ai",
   "version": "1.0.0",
   "description": "Telegram User Bot with AI & Auto Reply",
@@ -18,11 +18,3 @@ package_json = '''{
     "nodemon": "^3.0.2"
   }
 }
-'''
-
-with open('/mnt/agents/output/telegram-userbot-ai/package.json', 'w') as f:
-    f.write(package_json)
-
-print("✅ package.json تم إصلاحه")
-print("\nمحتوى الملف:")
-print(package_json)
