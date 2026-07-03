@@ -1,4 +1,4 @@
-messageHandler_js = r'''const { Api } = require('telegram');
+const { Api } = require('telegram');
 const autoReply = require('../utils/autoReply');
 const stats = require('../utils/stats');
 const aiHandler = require('./aiHandler');
@@ -6,13 +6,11 @@ const aiHandler = require('./aiHandler');
 class MessageHandler {
   constructor(client) {
     this.client = client;
-    this.pendingActions = new Map();
+    this.pendingActions = new Map(); // لتخزين الإجراءات المعلقة
   }
 
   async handleMessage(event) {
     const message = event.message;
-    if (!message) return;
-    
     const chatId = message.chatId;
     const userId = message.senderId;
     const text = message.message || '';
@@ -26,7 +24,7 @@ class MessageHandler {
       return;
     }
 
-    // التحقق من الإجراءات المعلقة
+    // التحقق من الإجراءات المعلقة (مثل إضافة رد)
     if (this.pendingActions.has(userId)) {
       await this.handlePendingAction(message, userId, text);
       return;
@@ -44,14 +42,10 @@ class MessageHandler {
     const settings = autoReply.getSettings();
     if (settings.aiEnabled && text.length > 2) {
       stats.recordMessage(userId, 'ai');
-      
-      // إظهار "يكتب..."
-      try {
-        await this.client.invoke(new Api.messages.SetTyping({
-          peer: chatId,
-          action: new Api.SendMessageTypingAction()
-        }));
-      } catch (e) {}
+      const typingAction = await this.client.invoke(new Api.messages.SetTyping({
+        peer: chatId,
+        action: new Api.SendMessageTypingAction()
+      }));
       
       const aiResponse = await aiHandler.generateResponse(userId, text, settings.aiModel);
       await this.sendMessage(chatId, aiResponse);
@@ -75,7 +69,7 @@ class MessageHandler {
         const aiQuery = text.replace('/ai', '').trim();
         if (aiQuery) {
           const response = await aiHandler.generateResponse(userId, aiQuery);
-          await this.sendMessage(chatId, '🤖 ' + response);
+          await this.sendMessage(chatId, `🤖 ${response}`);
         } else {
           await this.sendMessage(chatId, 'استخدم: /ai سؤالك هنا');
         }
@@ -131,18 +125,19 @@ class MessageHandler {
   }
 
   async sendMenu(chatId) {
-    const InlineKeyboards = require('../keyboards/inlineKeyboards');
+    const { InlineKeyboards } = require('../keyboards/inlineKeyboards');
     await this.client.invoke(new Api.messages.SendMessage({
       peer: chatId,
-      message: '🤖 بوتي الذكي\n\nاختر من القائمة:',
-      replyMarkup: InlineKeyboards.mainMenu()
+      message: '🤖 **بوتي الذكي**\n\nاختر من القائمة:',
+      replyMarkup: InlineKeyboards.mainMenu(),
+      parseMode: 'markdown'
     }));
   }
 
   async showStats(chatId) {
     const s = stats.getStats();
     const statsText = `
-📊 الإحصائيات
+📊 **الإحصائيات**
 
 💬 إجمالي الرسائل: ${s.totalMessages}
 👥 عدد المستخدمين: ${s.totalUsers}
@@ -158,7 +153,7 @@ ${s.topCommands.map(([cmd, count]) => `  ${cmd}: ${count}`).join('\n') || 'لا 
 
   async showHelp(chatId) {
     const helpText = `
-🤖 أوامر البوت:
+🤖 **أوامر البوت:**
 
 /menu - فتح القائمة الرئيسية
 /ai [سؤال] - سؤال الذكاء الاصطناعي
@@ -168,7 +163,7 @@ ${s.topCommands.map(([cmd, count]) => `  ${cmd}: ${count}`).join('\n') || 'لا 
 /clear - مسح سياق المحادثة
 /help - عرض هذه المساعدة
 
-💡 ميزات:
+💡 **ميزات:**
 • ردود تلقائية ذكية
 • ذكاء اصطناعي متكامل
 • أزرار شفافة تفاعلية
@@ -180,15 +175,10 @@ ${s.topCommands.map(([cmd, count]) => `  ${cmd}: ${count}`).join('\n') || 'لا 
   async sendMessage(chatId, text) {
     await this.client.invoke(new Api.messages.SendMessage({
       peer: chatId,
-      message: text
+      message: text,
+      parseMode: 'markdown'
     }));
   }
 }
 
 module.exports = MessageHandler;
-'''
-
-with open('/mnt/agents/output/telegram-userbot-ai/src/handlers/messageHandler.js', 'w') as f:
-    f.write(messageHandler_js)
-
-print("✅ src/handlers/messageHandler.js")
