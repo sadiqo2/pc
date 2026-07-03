@@ -1,7 +1,7 @@
-callbackHandler_js = r'''const { Api } = require('telegram');
+const { Api } = require('telegram');
 const autoReply = require('../utils/autoReply');
 const stats = require('../utils/stats');
-const InlineKeyboards = require('../keyboards/inlineKeyboards');
+const { InlineKeyboards } = require('../keyboards/inlineKeyboards');
 
 class CallbackHandler {
   constructor(client) {
@@ -11,37 +11,33 @@ class CallbackHandler {
 
   async handleCallback(event) {
     const callbackQuery = event.query;
-    if (!callbackQuery) return;
-    
     const data = callbackQuery.data.toString();
     const chatId = callbackQuery.peer.userId || callbackQuery.peer.channelId;
     const userId = callbackQuery.userId;
     const msgId = callbackQuery.msgId;
 
-    console.log('Callback:', data);
+    console.log('Callback received:', data);
 
-    // الرد على الـ callback
-    try {
-      await this.client.invoke(new Api.messages.SetBotCallbackAnswer({
-        queryId: callbackQuery.queryId,
-        message: 'تم!'
-      }));
-    } catch (e) {}
+    // الرد على الـ callback (إزالة التحميل)
+    await this.client.invoke(new Api.messages.SetBotCallbackAnswer({
+      queryId: callbackQuery.queryId,
+      message: 'تم!'
+    }));
 
     // معالجة الأزرار
     switch (true) {
       case data === 'menu_main':
-        await this.editMessage(chatId, msgId, '🤖 بوتي الذكي\n\nاختر من القائمة:', InlineKeyboards.mainMenu());
+        await this.editMessage(chatId, msgId, '🤖 **بوتي الذكي**\n\nاختر من القائمة:', InlineKeyboards.mainMenu());
         break;
 
       case data === 'menu_ai':
         const settings = autoReply.getSettings();
-        await this.editMessage(chatId, msgId, '🤖 إعدادات الذكاء الاصطناعي', InlineKeyboards.aiMenu(settings.aiEnabled));
+        await this.editMessage(chatId, msgId, '🤖 **إعدادات الذكاء الاصطناعي**', InlineKeyboards.aiMenu(settings.aiEnabled));
         break;
 
       case data === 'menu_auto':
         const replies = autoReply.listReplies();
-        await this.editMessage(chatId, msgId, '⚡ الردود التلقائية\n\nاختر لإدارة الردود:', InlineKeyboards.autoReplyMenu(replies));
+        await this.editMessage(chatId, msgId, '⚡ **الردود التلقائية**\n\nاختر لإدارة الردود:', InlineKeyboards.autoReplyMenu(replies));
         break;
 
       case data === 'menu_stats':
@@ -50,23 +46,24 @@ class CallbackHandler {
 
       case data === 'menu_settings':
         const currentSettings = autoReply.getSettings();
-        await this.editMessage(chatId, msgId, '⚙️ الإعدادات', InlineKeyboards.settingsMenu(currentSettings));
+        await this.editMessage(chatId, msgId, '⚙️ **الإعدادات**', InlineKeyboards.settingsMenu(currentSettings));
         break;
 
       case data === 'ai_toggle':
         const aiSettings = autoReply.getSettings();
         await autoReply.toggleAI(!aiSettings.aiEnabled);
         const newStatus = autoReply.getSettings().aiEnabled;
-        await this.editMessage(chatId, msgId, `🤖 الذكاء الاصطناعي: ${newStatus ? '✅ مفعل' : '❌ معطل'}`, InlineKeyboards.aiMenu(newStatus));
+        await this.editMessage(chatId, msgId, `🤖 **الذكاء الاصطناعي: ${newStatus ? '✅ مفعل' : '❌ معطل'}**`, InlineKeyboards.aiMenu(newStatus));
         break;
 
       case data.startsWith('ai_model:'):
         const model = data.split(':')[1];
+        await autoReply.toggleAI(true);
+        // تحديث النموذج في الإعدادات
         const s = autoReply.getSettings();
         s.aiModel = model;
         await autoReply.save();
-        await autoReply.toggleAI(true);
-        await this.editMessage(chatId, msgId, `🧠 تم تغيير النموذج إلى ${model}`, InlineKeyboards.aiMenu(true));
+        await this.editMessage(chatId, msgId, `🧠 **تم تغيير النموذج إلى ${model}**`, InlineKeyboards.aiMenu(true));
         break;
 
       case data === 'auto_add':
@@ -81,10 +78,11 @@ class CallbackHandler {
         const st = autoReply.getSettings();
         await autoReply.toggleStats(!st.statsEnabled);
         const updatedSettings = autoReply.getSettings();
-        await this.editMessage(chatId, msgId, '⚙️ الإعدادات', InlineKeyboards.settingsMenu(updatedSettings));
+        await this.editMessage(chatId, msgId, '⚙️ **الإعدادات**', InlineKeyboards.settingsMenu(updatedSettings));
         break;
 
       case data === 'reset_stats':
+        // إعادة تعيين الإحصائيات
         await this.editMessage(chatId, msgId, '⚠️ هل تريد إعادة تعيين الإحصائيات؟', InlineKeyboards.confirmButtons('reset_stats'));
         break;
 
@@ -104,12 +102,10 @@ class CallbackHandler {
         break;
 
       case data === 'close':
-        try {
-          await this.client.invoke(new Api.messages.DeleteMessages({
-            id: [msgId],
-            revoke: true
-          }));
-        } catch (e) {}
+        await this.client.invoke(new Api.messages.DeleteMessages({
+          id: [msgId],
+          revoke: true
+        }));
         break;
 
       case data === 'cancel':
@@ -123,7 +119,7 @@ class CallbackHandler {
           const reply = allReplies[keyword];
           await this.client.invoke(new Api.messages.SendMessage({
             peer: chatId,
-            message: `📝 ${keyword}\n→ ${reply}`
+            message: `📝 **${keyword}**\n→ ${reply}`
           }));
         }
     }
@@ -135,17 +131,18 @@ class CallbackHandler {
         peer: chatId,
         id: msgId,
         message: text,
-        replyMarkup: keyboard
+        replyMarkup: keyboard,
+        parseMode: 'markdown'
       }));
     } catch (error) {
-      console.error('Edit error:', error.message);
+      console.error('Edit message error:', error);
     }
   }
 
   async showStatsInMessage(chatId, msgId) {
     const s = stats.getStats();
     const statsText = `
-📊 الإحصائيات
+📊 **الإحصائيات**
 
 💬 إجمالي الرسائل: ${s.totalMessages}
 👥 عدد المستخدمين: ${s.totalUsers}
@@ -158,9 +155,3 @@ class CallbackHandler {
 }
 
 module.exports = CallbackHandler;
-'''
-
-with open('/mnt/agents/output/telegram-userbot-ai/src/handlers/callbackHandler.js', 'w') as f:
-    f.write(callbackHandler_js)
-
-print("✅ src/handlers/callbackHandler.js")
