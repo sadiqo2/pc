@@ -1,4 +1,4 @@
-{
+settings_json = '''{
   "autoReplies": {
     "هلو": "هلوات! 👋 أهلاً بيك",
     "مرحبا": "مرحباً بيك! 🌹",
@@ -15,3 +15,9 @@
   "adminOnly": false,
   "blockedUsers": []
 }
+'''
+
+with open('/mnt/agents/output/telegram-userbot-ai/config/settings.json', 'w') as f:
+    f.write(settings_json)
+
+print("✅ config/settings.json")
