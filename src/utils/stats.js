@@ -1,4 +1,4 @@
-const fs = require('fs-extra');
+stats_js = '''const fs = require('fs-extra');
 const path = require('path');
 
 const STATS_FILE = path.join(__dirname, '../../data/stats.json');
@@ -72,3 +72,9 @@ class StatsManager {
 }
 
 module.exports = new StatsManager();
+'''
+
+with open('/mnt/agents/output/telegram-userbot-ai/src/utils/stats.js', 'w') as f:
+    f.write(stats_js)
+
+print("✅ src/utils/stats.js")
