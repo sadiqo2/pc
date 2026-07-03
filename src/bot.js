@@ -1,6 +1,5 @@
-const { TelegramClient } = require('telegram');
+bot_js = r'''const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
-const { NewMessage, CallbackQuery } = require('telegram').events;
 const dotenv = require('dotenv');
 const fs = require('fs');
 const path = require('path');
@@ -48,7 +47,7 @@ const client = new TelegramClient(
     { connectionRetries: 5 }
 );
 
-// ========== دالة إدخال من Terminal ==========
+// ========== دالة إدخال ==========
 function ask(question) {
     const rl = readline.createInterface({
         input: process.stdin,
@@ -64,14 +63,11 @@ function ask(question) {
 
 // ========== حفظ الجلسة ==========
 function saveSession(session) {
-    // حفظ في ملف
     fs.writeFileSync(SESSION_FILE, session);
     
-    // تحديث .env
     let envContent = '';
     if (fs.existsSync(ENV_FILE)) {
         envContent = fs.readFileSync(ENV_FILE, 'utf8');
-        // استبدل SESSION_STRING القديم أو أضف جديد
         if (envContent.includes('SESSION_STRING=')) {
             envContent = envContent.replace(/SESSION_STRING=.*/g, `SESSION_STRING=${session}`);
         } else {
@@ -89,11 +85,11 @@ function saveSession(session) {
 
 // ========== تشغيل البوت ==========
 async function startBot() {
-    const handlers = require('./handlers/messageHandler');
-    const callbackHandlers = require('./handlers/callbackHandler');
+    const MessageHandler = require('./handlers/messageHandler');
+    const CallbackHandler = require('./handlers/callbackHandler');
     
-    const msgHandler = new handlers(client);
-    const cbHandler = new callbackHandlers(client);
+    const msgHandler = new MessageHandler(client);
+    const cbHandler = new CallbackHandler(client);
 
     await client.start({
         phoneNumber: async () => {
@@ -113,7 +109,6 @@ async function startBot() {
         
         phoneCode: async () => {
             console.log('\n📨 تم إرسال كود التحقق لتيليجرام');
-            console.log('   (تحقق من التطبيق أو الرسائل)');
             const code = await ask('   أدخل الكود: ');
             return code;
         },
@@ -123,7 +118,7 @@ async function startBot() {
         },
     });
 
-    // حفظ الجلسة الجديدة
+    // حفظ الجلسة
     const newSession = client.session.save();
     if (newSession && newSession !== sessionString) {
         saveSession(newSession);
@@ -132,7 +127,10 @@ async function startBot() {
     console.log('\n✅ تم تسجيل الدخول بنجاح!');
     console.log('🤖 البوت يعمل الآن\n');
 
-    // معالجة الرسائل
+    // ========== استيراد events بالطريقة الصحيحة ==========
+    const { NewMessage } = require('telegram/events');
+    const { CallbackQuery } = require('telegram/events');
+
     client.addEventHandler(async (event) => {
         try {
             await msgHandler.handleMessage(event);
@@ -166,3 +164,9 @@ startBot().catch(err => {
     console.error('❌ فشل:', err.message);
     process.exit(1);
 });
+'''
+
+with open('/mnt/agents/output/telegram-userbot-ai/src/bot.js', 'w') as f:
+    f.write(bot_js)
+
+print("✅ src/bot.js")
