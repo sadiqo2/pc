@@ -1,172 +1,73 @@
-bot_js = r'''const { TelegramClient } = require('telegram');
+const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
+const input = require('input');
 const dotenv = require('dotenv');
-const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 
 dotenv.config();
 
-// ========== إعدادات ==========
+const MessageHandler = require('./handlers/messageHandler');
+const CallbackHandler = require('./handlers/callbackHandler');
+
+// إعدادات الاتصال
 const apiId = parseInt(process.env.API_ID);
 const apiHash = process.env.API_HASH;
-const phoneNumber = process.env.PHONE_NUMBER;
-const SESSION_FILE = path.join(__dirname, '../data/session.txt');
-const ENV_FILE = path.join(__dirname, '../.env');
+const stringSession = new StringSession(''); // سيتم حفظه بعد أول تسجيل دخول
 
-// قراءة الجلسة
-let sessionString = process.env.SESSION_STRING || '';
-if (!sessionString && fs.existsSync(SESSION_FILE)) {
-    sessionString = fs.readFileSync(SESSION_FILE, 'utf8').trim();
-}
+console.log('🚀 جاري تشغيل بوت تيليجرام...');
+console.log('📱 سجل دخول بحسابك الشخصي');
 
-// التحقق
-if (!apiId || !apiHash) {
-    console.error('❌ API_ID و API_HASH مطلوبين!');
-    console.error('   احصل عليهم من: https://my.telegram.org/apps');
-    process.exit(1);
-}
+const client = new TelegramClient(stringSession, apiId, apiHash, {
+  connectionRetries: 5,
+});
 
-if (!phoneNumber && !sessionString) {
-    console.error('❌ PHONE_NUMBER مطلوب في .env');
-    console.error('   مثال: PHONE_NUMBER=+9647712345678');
-    process.exit(1);
-}
+const messageHandler = new MessageHandler(client);
+const callbackHandler = new CallbackHandler(client);
 
-// إنشاء مجلد data
-if (!fs.existsSync(path.dirname(SESSION_FILE))) {
-    fs.mkdirSync(path.dirname(SESSION_FILE), { recursive: true });
-}
-
-console.log('🚀 بوت تيليجرام - جاري التشغيل...\n');
-
-const client = new TelegramClient(
-    new StringSession(sessionString),
-    apiId,
-    apiHash,
-    { connectionRetries: 5 }
-);
-
-// ========== دالة إدخال ==========
-function ask(question) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    });
-    return new Promise(resolve => {
-        rl.question(question, answer => {
-            rl.close();
-            resolve(answer.trim());
-        });
-    });
-}
-
-// ========== حفظ الجلسة ==========
-function saveSession(session) {
-    fs.writeFileSync(SESSION_FILE, session);
-    
-    let envContent = '';
-    if (fs.existsSync(ENV_FILE)) {
-        envContent = fs.readFileSync(ENV_FILE, 'utf8');
-        if (envContent.includes('SESSION_STRING=')) {
-            envContent = envContent.replace(/SESSION_STRING=.*/g, `SESSION_STRING=${session}`);
-        } else {
-            envContent += `\nSESSION_STRING=${session}\n`;
-        }
-    } else {
-        envContent = `SESSION_STRING=${session}\n`;
-    }
-    fs.writeFileSync(ENV_FILE, envContent);
-    
-    console.log('\n✅ تم حفظ الجلسة!');
-    console.log('📁 data/session.txt');
-    console.log('📝 .env (تم تحديثه)');
-}
-
-// ========== تشغيل البوت ==========
 async function startBot() {
-    const MessageHandler = require('./handlers/messageHandler');
-    const CallbackHandler = require('./handlers/callbackHandler');
-    
-    const msgHandler = new MessageHandler(client);
-    const cbHandler = new CallbackHandler(client);
+  await client.start({
+    phoneNumber: async () => await input.text('📱 أدخل رقم هاتفك (+964XXXXXXXXXX): '),
+    password: async () => await input.text('🔐 أدخل كلمة المرور (لو عندك 2FA): '),
+    phoneCode: async () => await input.text('📨 أدخل كود التحقق: '),
+    onError: (err) => console.log(err),
+  });
 
-    await client.start({
-        phoneNumber: async () => {
-            if (sessionString) {
-                console.log('📱 استخدام جلسة مخزنة...');
-                return phoneNumber || '+964000000000';
-            }
-            console.log('📱 تسجيل دخول جديد');
-            return phoneNumber;
-        },
-        
-        password: async () => {
-            console.log('\n🔐 الحساب محمي بكلمة مرور (2FA)');
-            const pass = await ask('   أدخل كلمة المرور: ');
-            return pass;
-        },
-        
-        phoneCode: async () => {
-            console.log('\n📨 تم إرسال كود التحقق لتيليجرام');
-            const code = await ask('   أدخل الكود: ');
-            return code;
-        },
-        
-        onError: (err) => {
-            console.error('\n❌ خطأ:', err.message);
-        },
-    });
+  console.log('✅ تم تسجيل الدخول بنجاح!');
+  console.log('💾 جلسة الحفظ:', client.session.save());
+  
+  // حفظ الجلسة للاستخدام المستقبلي
+  console.log('\n⚠️ احفظ الجلسة أعلاه في متغير STRING_SESSION في .env');
 
-    // حفظ الجلسة
-    const newSession = client.session.save();
-    if (newSession && newSession !== sessionString) {
-        saveSession(newSession);
+  // معالجة الرسائل الجديدة
+  client.addEventHandler(async (event) => {
+    try {
+      await messageHandler.handleMessage(event);
+    } catch (error) {
+      console.error('Message Handler Error:', error);
     }
+  }, new (require('telegram').events.NewMessage)({}));
 
-    console.log('\n✅ تم تسجيل الدخول بنجاح!');
-    console.log('🤖 البوت يعمل الآن\n');
+  // معالجة الـ Callback Queries (الأزرار)
+  client.addEventHandler(async (event) => {
+    try {
+      await callbackHandler.handleCallback(event);
+    } catch (error) {
+      console.error('Callback Handler Error:', error);
+    }
+  }, new (require('telegram').events.CallbackQuery)({}));
 
-    // ========== استيراد events بالطريقة الصحيحة ==========
-    const { NewMessage } = require('telegram/events');
-    const { CallbackQuery } = require('telegram/events');
-
-    client.addEventHandler(async (event) => {
-        try {
-            await msgHandler.handleMessage(event);
-        } catch (e) {
-            // console.error('رسالة:', e.message);
-        }
-    }, new NewMessage({}));
-
-    client.addEventHandler(async (event) => {
-        try {
-            await cbHandler.handleCallback(event);
-        } catch (e) {
-            // console.error('زر:', e.message);
-        }
-    }, new CallbackQuery({}));
-
-    console.log('📋 الأوامر المتاحة:');
-    console.log('   /menu - القائمة الرئيسية');
-    console.log('   /help - المساعدة');
-    console.log('   Ctrl+C - إيقاف البوت\n');
+  console.log('🤖 البوت يعمل الآن! أرسل /menu لعرض القائمة');
 }
 
-// ========== إغلاق ==========
+// التعامل مع الأخطاء
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Rejection:', err);
+});
+
 process.on('SIGINT', async () => {
-    console.log('\n👋 إيقاف البوت...');
-    await client.disconnect();
-    process.exit(0);
+  console.log('\n👋 جاري إيقاف البوت...');
+  await client.disconnect();
+  process.exit(0);
 });
 
-startBot().catch(err => {
-    console.error('❌ فشل:', err.message);
-    process.exit(1);
-});
-'''
-
-with open('/mnt/agents/output/telegram-userbot-ai/src/bot.js', 'w') as f:
-    f.write(bot_js)
-
-print("✅ src/bot.js")
+startBot().catch(console.error);
