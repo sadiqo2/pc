@@ -1,4 +1,4 @@
-inlineKeyboards_js = '''const { Api } = require('telegram');
+const { Api } = require('telegram');
 
 class InlineKeyboards {
   // لوحة التحكم الرئيسية
@@ -45,6 +45,7 @@ class InlineKeyboards {
   static autoReplyMenu(replies) {
     const rows = [];
     
+    // زر إضافة رد جديد
     rows.push(new Api.KeyboardButtonRow({
       buttons: [
         new Api.KeyboardButtonCallback({
@@ -58,6 +59,7 @@ class InlineKeyboards {
       ]
     }));
 
+    // عرض الردود الحالية
     const replyEntries = Object.entries(replies).slice(0, 8);
     for (const [keyword, reply] of replyEntries) {
       rows.push(new Api.KeyboardButtonRow({
@@ -174,9 +176,3 @@ class InlineKeyboards {
 }
 
 module.exports = InlineKeyboards;
-'''
-
-with open('/mnt/agents/output/telegram-userbot-ai/src/keyboards/inlineKeyboards.js', 'w') as f:
-    f.write(inlineKeyboards_js)
-
-print("✅ src/keyboards/inlineKeyboards.js")
