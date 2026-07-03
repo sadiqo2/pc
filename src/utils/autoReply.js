@@ -1,4 +1,4 @@
-const fs = require('fs-extra');
+autoReply_js = '''const fs = require('fs-extra');
 const path = require('path');
 
 const SETTINGS_FILE = path.join(__dirname, '../../config/settings.json');
@@ -58,3 +58,9 @@ class AutoReplyManager {
 }
 
 module.exports = new AutoReplyManager();
+'''
+
+with open('/mnt/agents/output/telegram-userbot-ai/src/utils/autoReply.js', 'w') as f:
+    f.write(autoReply_js)
+
+print("✅ src/utils/autoReply.js")
