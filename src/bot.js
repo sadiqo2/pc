@@ -1,7 +1,7 @@
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
-const input = require('input');
 const dotenv = require('dotenv');
+const fs = require('fs');
 const path = require('path');
 
 dotenv.config();
@@ -9,65 +9,156 @@ dotenv.config();
 const MessageHandler = require('./handlers/messageHandler');
 const CallbackHandler = require('./handlers/callbackHandler');
 
-// إعدادات الاتصال
+// ========== إعدادات من .env ==========
 const apiId = parseInt(process.env.API_ID);
 const apiHash = process.env.API_HASH;
-const stringSession = new StringSession(''); // سيتم حفظه بعد أول تسجيل دخول
+const phoneNumber = process.env.PHONE_NUMBER; // ← الرقم من .env
+const sessionString = process.env.SESSION_STRING || '';
+
+// التحقق من الإعدادات
+if (!apiId || !apiHash) {
+    console.error('❌ خطأ: API_ID و API_HASH مطلوبين في .env');
+    console.error('   احصل عليهم من: https://my.telegram.org/apps');
+    process.exit(1);
+}
+
+if (!phoneNumber) {
+    console.error('❌ خطأ: PHONE_NUMBER مطلوب في .env');
+    console.error('   مثال: PHONE_NUMBER=+9647712345678');
+    process.exit(1);
+}
 
 console.log('🚀 جاري تشغيل بوت تيليجرام...');
-console.log('📱 سجل دخول بحسابك الشخصي');
+console.log('📱 الرقم:', phoneNumber);
 
-const client = new TelegramClient(stringSession, apiId, apiHash, {
-  connectionRetries: 5,
-});
+const client = new TelegramClient(
+    new StringSession(sessionString),
+    apiId,
+    apiHash,
+    { connectionRetries: 5 }
+);
 
 const messageHandler = new MessageHandler(client);
 const callbackHandler = new CallbackHandler(client);
 
+// ========== تخزين مؤقت للكود ==========
+const codeFile = path.join(__dirname, '../data/code.txt');
+
 async function startBot() {
-  await client.start({
-    phoneNumber: async () => await input.text('📱 أدخل رقم هاتفك (+964XXXXXXXXXX): '),
-    password: async () => await input.text('🔐 أدخل كلمة المرور (لو عندك 2FA): '),
-    phoneCode: async () => await input.text('📨 أدخل كود التحقق: '),
-    onError: (err) => console.log(err),
-  });
-
-  console.log('✅ تم تسجيل الدخول بنجاح!');
-  console.log('💾 جلسة الحفظ:', client.session.save());
-  
-  // حفظ الجلسة للاستخدام المستقبلي
-  console.log('\n⚠️ احفظ الجلسة أعلاه في متغير STRING_SESSION في .env');
-
-  // معالجة الرسائل الجديدة
-  client.addEventHandler(async (event) => {
-    try {
-      await messageHandler.handleMessage(event);
-    } catch (error) {
-      console.error('Message Handler Error:', error);
+    // إنشاء مجلد data إذا ما موجود
+    if (!fs.existsSync(path.dirname(codeFile))) {
+        fs.mkdirSync(path.dirname(codeFile), { recursive: true });
     }
-  }, new (require('telegram').events.NewMessage)({}));
 
-  // معالجة الـ Callback Queries (الأزرار)
-  client.addEventHandler(async (event) => {
-    try {
-      await callbackHandler.handleCallback(event);
-    } catch (error) {
-      console.error('Callback Handler Error:', error);
-    }
-  }, new (require('telegram').events.CallbackQuery)({}));
+    await client.start({
+        phoneNumber: () => Promise.resolve(phoneNumber),
+        
+        password: () => {
+            console.log('🔐 الحساب محمي بكلمة مرور (2FA)');
+            console.log('   أدخل كلمة المرور في ملف data/password.txt');
+            
+            // إنشاء ملف password.txt
+            const passFile = path.join(__dirname, '../data/password.txt');
+            fs.writeFileSync(passFile, '');
+            
+            // انتظر حتى يكتب المستخدم الباسورد
+            return waitForFile(passFile, 'كلمة المرور');
+        },
+        
+        phoneCode: () => {
+            console.log('📨 تم إرسال كود التحقق!');
+            console.log('   أدخل الكود في ملف data/code.txt');
+            
+            // إنشاء ملف code.txt
+            fs.writeFileSync(codeFile, '');
+            
+            // انتظر حتى يكتب المستخدم الكود
+            return waitForFile(codeFile, 'كود التحقق');
+        },
+        
+        onError: (err) => console.error('❌ خطأ:', err.message),
+    });
 
-  console.log('🤖 البوت يعمل الآن! أرسل /menu لعرض القائمة');
+    // حفظ الجلسة
+    const savedSession = client.session.save();
+    console.log('\n✅ تم تسجيل الدخول بنجاح!');
+    console.log('💾 احفظ هذا في .env كـ SESSION_STRING:');
+    console.log(savedSession);
+    
+    // كتابة الجلسة في ملف
+    const sessionFile = path.join(__dirname, '../data/session.txt');
+    fs.writeFileSync(sessionFile, savedSession);
+    console.log('   (تم حفظه أيضاً في data/session.txt)');
+
+    // ========== معالجة الرسائل ==========
+    const { NewMessage } = require('telegram').events;
+    const { CallbackQuery } = require('telegram').events;
+
+    client.addEventHandler(async (event) => {
+        try {
+            await messageHandler.handleMessage(event);
+        } catch (error) {
+            console.error('❌ خطأ في معالجة الرسالة:', error.message);
+        }
+    }, new NewMessage({}));
+
+    client.addEventHandler(async (event) => {
+        try {
+            await callbackHandler.handleCallback(event);
+        } catch (error) {
+            console.error('❌ خطأ في معالجة الزر:', error.message);
+        }
+    }, new CallbackQuery({}));
+
+    console.log('\n🤖 البوت يعمل الآن!');
+    console.log('   أرسل /menu لعرض القائمة');
+    console.log('   أرسل /help للمساعدة');
 }
 
-// التعامل مع الأخطاء
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Rejection:', err);
-});
+// ========== دالة انتظار الملف ==========
+function waitForFile(filePath, label) {
+    return new Promise((resolve) => {
+        console.log(`   ⏳ في انتظار ${label}...`);
+        
+        const checkInterval = setInterval(() => {
+            try {
+                const content = fs.readFileSync(filePath, 'utf8').trim();
+                
+                if (content) {
+                    clearInterval(checkInterval);
+                    console.log(`   ✅ تم استلام ${label}`);
+                    
+                    // مسح الملف
+                    fs.writeFileSync(filePath, '');
+                    
+                    resolve(content);
+                }
+            } catch (e) {
+                // الملف لسه ما موجود
+            }
+        }, 1000); // فحص كل ثانية
+        
+        // timeout بعد 5 دقائق
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            console.error(`   ❌ انتهى الوقت! لم يتم إدخال ${label}`);
+            process.exit(1);
+        }, 300000);
+    });
+}
 
+// ========== معالجة الإغلاق ==========
 process.on('SIGINT', async () => {
-  console.log('\n👋 جاري إيقاف البوت...');
-  await client.disconnect();
-  process.exit(0);
+    console.log('\n👋 جاري إيقاف البوت...');
+    await client.disconnect();
+    process.exit(0);
 });
 
-startBot().catch(console.error);
+process.on('unhandledRejection', (err) => {
+    console.error('❌ خطأ غير متوقع:', err.message);
+});
+
+startBot().catch((err) => {
+    console.error('❌ فشل تشغيل البوت:', err.message);
+    process.exit(1);
+});
